@@ -2,15 +2,17 @@
 session_start();
 require 'db.php';
 
-// Optional: Check if admin is logged in
+// Check if admin is logged in
 if (!isset($_SESSION['is_admin']) || $_SESSION['is_admin'] !== true) {
     header("Location: admin_login.php");
     exit;
 }
 
-// Fetch analytics data: group complaints by category
-$stmt = $pdo->query("SELECT category, COUNT(*) as count FROM complaints GROUP BY category");
-$analyticsData = $stmt->fetchAll();
+// --- DATA FETCHING ---
+
+// 1. Fetch data for Analytics Chart
+$stmtAnalytics = $pdo->query("SELECT category, COUNT(*) as count FROM complaints GROUP BY category");
+$analyticsData = $stmtAnalytics->fetchAll();
 $chartLabels = [];
 $chartData = [];
 foreach ($analyticsData as $data) {
@@ -20,229 +22,179 @@ foreach ($analyticsData as $data) {
 $chartLabelsJson = json_encode($chartLabels);
 $chartDataJson   = json_encode($chartData);
 
-// Fetch full complaint details for the list
-$stmt2 = $pdo->query("SELECT * FROM complaints ORDER BY created_at DESC");
-$complaints = $stmt2->fetchAll();
+// 2. Fetch all complaints for the list
+$stmtComplaints = $pdo->query("SELECT id, category, message, status, created_at FROM complaints ORDER BY created_at DESC");
+$complaints = $stmtComplaints->fetchAll();
+
+// 3. Fetch data for Stat Cards
+$totalComplaints = $pdo->query("SELECT COUNT(*) FROM complaints")->fetchColumn();
+$openComplaints = $pdo->query("SELECT COUNT(*) FROM complaints WHERE status = 'Open'")->fetchColumn();
+$resolvedComplaints = $pdo->query("SELECT COUNT(*) FROM complaints WHERE status = 'Resolved'")->fetchColumn();
+
+
+// --- HELPER FUNCTIONS ---
+
+// Helper to get color class for status badges
+function getStatusBadge($status) {
+    switch (strtolower($status)) {
+        case 'resolved':
+            return 'bg-green-100 text-green-800';
+        case 'in progress':
+            return 'bg-yellow-100 text-yellow-800';
+        case 'open':
+        default:
+            return 'bg-blue-100 text-blue-800';
+    }
+}
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
-          font-family: Arial, sans-serif;
-          background-color: #f2f2f2;
-          margin: 0;
-          padding: 20px;
-        }
-        .container {
-          max-width: 900px;
-          margin: 0 auto;
-        }
-        h1 {
-          text-align: center;
-          color: #333;
-        }
-        .card {
-          background: #fff;
-          padding: 20px;
-          margin-bottom: 20px;
-          border-radius: 5px;
-          box-shadow: 0 0 10px #ccc;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 20px;
-        }
-        table, th, td {
-          border: 1px solid #ccc;
-        }
-        th, td {
-          padding: 10px;
-          text-align: left;
-        }
-        th {
-          background-color: #f7f7f7;
-        }
-        button {
-          background: #007BFF;
-          color: #fff;
-          border: none;
-          padding: 10px 20px;
-          border-radius: 3px;
-          cursor: pointer;
-        }
-        button:hover {
-          background: #0056b3;
-        }
-        .chart-container {
-          width: 100%;
-          height: 300px;
-          margin-top: 20px;
-        }
-        .output {
-          text-align: center;
-          color: green;
-          margin-bottom: 20px;
-        }
-        /* Additional CSS for chat system */
-        .chat-container {
-          border: 1px solid #ccc;
-          border-radius: 5px;
-          background: #fff;
-          padding: 10px;
-          margin-top: 20px;
-          max-height: 400px;
-          overflow-y: auto;
-        }
-        .chat-message {
-          margin-bottom: 10px;
-        }
-        .chat-message span {
-          display: inline-block;
-          padding: 5px 10px;
-          border-radius: 15px;
-        }
-        .chat-message.user span {
-          background: #007BFF;
-          color: #fff;
-        }
-        .chat-message.admin span {
-          background: #ccc;
-          color: #333;
-        }
-        .chat-input {
-          margin-top: 10px;
-          display: flex;
-        }
-        .chat-input input {
-          flex: 1;
-          padding: 10px;
-          border: 1px solid #ccc;
-          border-radius: 5px 0 0 5px;
-        }
-        .chat-input button {
-          padding: 10px 20px;
-          border: none;
-          background: #007BFF;
-          color: #fff;
-          border-radius: 0 5px 5px 0;
-          cursor: pointer;
-        }
-        .chat-input button:hover {
-          background: #0056b3;
+            font-family: 'Inter', sans-serif;
         }
     </style>
-    <!-- Load Chart.js from CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
-<div class="container">
-    <h1>Admin Dashboard</h1>
-    
-    <!-- Section 1: Complaint Analytics -->
-    <div class="card">
-        <a href="admin_dashboard.php">Admin Dashboard</a>
-        <h2>Complaint Analytics</h2>
-        <div class="chart-container">
-            <canvas id="analyticsChart"></canvas>
+<body class="bg-gray-100">
+
+<div class="flex h-screen">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-gray-800 text-white flex flex-col">
+        <div class="p-6 text-2xl font-bold border-b border-gray-700">
+            CMS Admin
         </div>
-    </div>
-    
-    <!-- Section 2: Complaints List -->
-    <div class="card">
-        <h2>Complaints List</h2>
-        <?php if (empty($complaints)): ?>
-            <p>No complaints submitted yet.</p>
-        <?php else: ?>
-            <table>
-                <tr>
-                    <th>ID</th>
-                    <th>Category</th>
-                    <th>Message</th>
-                    <th>Status</th>
-                    <th>Submitted At</th>
-                </tr>
-                <?php foreach ($complaints as $comp): ?>
-                    <tr>
-                        <td><?php echo htmlspecialchars($comp['id']); ?></td>
-                        <td><?php echo htmlspecialchars($comp['category']); ?></td>
-                        <td><?php echo htmlspecialchars($comp['message']); ?></td>
-                        <td><?php echo htmlspecialchars($comp['status']); ?></td>
-                        <td><?php echo htmlspecialchars($comp['created_at']); ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </table>
-        <?php endif; ?>
-    </div>
-    
-    <!-- Section 3: Anonymous Chat System -->
-    <div class="card">
-        <h2>Anonymous Chat System</h2>
-        <div class="chat-container" id="chatContainer">
-            <!-- Chat messages will be appended here -->
+        <nav class="flex-1 p-4 space-y-2">
+            <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-lg bg-gray-900 text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a2 2 0 002 2h10a2 2 0 002-2V10M9 20h6"></path></svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="logout.php" class="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-gray-700 transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                <span>Logout</span>
+            </a>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-6 sm:p-8 lg:p-10 overflow-y-auto">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <p class="text-gray-600 mt-1">Overview of the complaint management system.</p>
+        </header>
+
+        <!-- Stat Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200/80">
+                <h3 class="text-gray-500 font-medium">Total Complaints</h3>
+                <p class="text-4xl font-bold text-gray-900 mt-2"><?php echo $totalComplaints; ?></p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200/80">
+                <h3 class="text-gray-500 font-medium">Open Cases</h3>
+                <p class="text-4xl font-bold text-blue-600 mt-2"><?php echo $openComplaints; ?></p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200/80">
+                <h3 class="text-gray-500 font-medium">Resolved Cases</h3>
+                <p class="text-4xl font-bold text-green-600 mt-2"><?php echo $resolvedComplaints; ?></p>
+            </div>
         </div>
-        <div class="chat-input">
-            <input type="text" id="chatMessage" placeholder="Type your message..." />
-            <button onclick="sendChat()">Send</button>
+
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Complaints List (takes 2/3 width on large screens) -->
+            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md border border-gray-200/80">
+                <h2 class="text-xl font-bold text-gray-900 mb-4">All Complaints</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3">ID</th>
+                                <th scope="col" class="px-6 py-3">Category</th>
+                                <th scope="col" class="px-6 py-3">Message</th>
+                                <th scope="col" class="px-6 py-3">Status</th>
+                                <th scope="col" class="px-6 py-3">Date</th>
+                                <th scope="col" class="px-6 py-3">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($complaints)): ?>
+                                <tr><td colspan="6" class="text-center py-8">No complaints found.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($complaints as $comp): ?>
+                                <tr class="bg-white border-b hover:bg-gray-50">
+                                    <td class="px-6 py-4 font-mono text-xs"><?php echo htmlspecialchars($comp['id']); ?></td>
+                                    <td class="px-6 py-4"><?php echo htmlspecialchars($comp['category']); ?></td>
+                                    <td class="px-6 py-4 max-w-xs truncate"><?php echo htmlspecialchars($comp['message']); ?></td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-2 py-1 font-semibold leading-tight rounded-full text-xs <?php echo getStatusBadge($comp['status']); ?>">
+                                            <?php echo htmlspecialchars($comp['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4"><?php echo date("M d, Y", strtotime($comp['created_at'])); ?></td>
+                                    <td class="px-6 py-4">
+                                        <a href="update_status.php?id=<?php echo $comp['id']; ?>" class="font-medium text-indigo-600 hover:underline">Update</a>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Analytics Chart (takes 1/3 width on large screens) -->
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200/80">
+                <h2 class="text-xl font-bold text-gray-900 mb-4">Analytics</h2>
+                <div class="h-80">
+                    <canvas id="analyticsChart"></canvas>
+                </div>
+            </div>
         </div>
-    </div>
+    </main>
 </div>
 
 <script>
-  // Initialize the analytics chart using Chart.js
-  const ctx = document.getElementById('analyticsChart').getContext('2d');
-  const analyticsChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: <?php echo $chartLabelsJson; ?>,
-      datasets: [{
-        label: 'Complaint Count',
-        data: <?php echo $chartDataJson; ?>,
-        backgroundColor: '#8884d8'
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: false }
-      }
-    }
-  });
-
-  // Anonymous Chat System Logic
-  function sendChat() {
-    const chatInput = document.getElementById('chatMessage');
-    const chatContainer = document.getElementById('chatContainer');
-    const message = chatInput.value.trim();
-    if (message !== '') {
-      // Append user message to chat container
-      const messageDiv = document.createElement('div');
-      messageDiv.className = 'chat-message user';
-      const span = document.createElement('span');
-      span.textContent = message;
-      messageDiv.appendChild(span);
-      chatContainer.appendChild(messageDiv);
-      chatInput.value = '';
-      // Auto-scroll to the bottom
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-      
-      // Simulate admin response after 1 second
-      setTimeout(function() {
-        const adminMessageDiv = document.createElement('div');
-        adminMessageDiv.className = 'chat-message admin';
-        const adminSpan = document.createElement('span');
-        adminSpan.textContent = 'Admin: We have received your message.';
-        adminMessageDiv.appendChild(adminSpan);
-        chatContainer.appendChild(adminMessageDiv);
-        // Auto-scroll to the bottom
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-      }, 1000);
-    }
-  }
+document.addEventListener('DOMContentLoaded', () => {
+    const ctx = document.getElementById('analyticsChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: <?php echo $chartLabelsJson; ?>,
+            datasets: [{
+                label: 'Complaint Count',
+                data: <?php echo $chartDataJson; ?>,
+                backgroundColor: 'rgba(79, 70, 229, 0.8)',
+                borderColor: 'rgba(79, 70, 229, 1)',
+                borderWidth: 1,
+                borderRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#111827',
+                    padding: 10,
+                    cornerRadius: 5
+                }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#e5e7eb' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+});
 </script>
 </body>
 </html>
-
