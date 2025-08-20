@@ -139,7 +139,7 @@ From the dashboard, you can view all complaints, see analytics, and manage live 
 
 ### Admin Dashboard
 ![Admin Dashboard](/image/admindashboard.png)
-![Admin Dashboard](/image/image.png.png)
+![Admin Dashboard](/image/image.png)
 
 <h3>👨‍💻 Author
 Dev Singh - MCA Student</h3>
