@@ -130,6 +130,13 @@ Admin ID: admin
 Password: password
 
 From the dashboard, you can view all complaints, see analytics, and manage live chats.
+## 🖼️ Project Preview
+
+### User View
+![User Complaint Form](./images/user-view.png)
+
+### Admin Dashboard
+![Admin Dashboard](./images/admin-dashboard.png)
 
 <h3>👨‍💻 Author
 Dev Singh - MCA Student</h3>
