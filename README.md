@@ -133,10 +133,13 @@ From the dashboard, you can view all complaints, see analytics, and manage live 
 ## 🖼️ Project Preview
 
 ### User View
-![User Complaint Form](./images/user-view.png)
+![User Complaint Form](/image/user.png)<br>
+![User Complaint Form](/image/chat.png)<br>
+
 
 ### Admin Dashboard
-![Admin Dashboard](./images/admin-dashboard.png)
+![Admin Dashboard](/image/admindashboard.png)
+![Admin Dashboard](/image/image.png.png)
 
 <h3>👨‍💻 Author
 Dev Singh - MCA Student</h3>
