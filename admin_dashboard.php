@@ -159,8 +159,214 @@ function getStatusBadge($status) {
                 </div>
             </div>
         </div>
+        <!-- START: Live Chat System -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+    <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-md border border-gray-200/80">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Live Chat System</h2>
+        <div class="flex h-[32rem] border border-gray-200 rounded-lg">
+            
+            <!-- Left Pane: Conversation List -->
+            <div class="w-1/3 border-r border-gray-200 flex flex-col">
+                <div class="p-4 border-b border-gray-200">
+                    <h3 class="font-semibold">Conversations</h3>
+                </div>
+                <div id="chat-list" class="flex-1 overflow-y-auto">
+                    <!-- Chat list items will be dynamically added here -->
+                    <p id="no-chats-message" class="p-4 text-center text-gray-500">Waiting for user chats...</p>
+                </div>
+            </div>
+
+            <!-- Right Pane: Chat Window -->
+            <div id="chat-panel" class="w-2/3 flex flex-col">
+                <!-- Initial State: No chat selected -->
+                <div id="chat-placeholder" class="flex-1 flex flex-col items-center justify-center text-center text-gray-500">
+                    <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                    <h3 class="font-semibold">Select a conversation</h3>
+                    <p class="text-sm">Choose a user from the list to view messages.</p>
+                </div>
+
+                <!-- Active Chat State (hidden by default) -->
+                <div id="active-chat" class="hidden flex-1 flex flex-col">
+                    <!-- Header -->
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 id="chat-header" class="font-semibold">Chat with <span id="chat-with-user-id" class="font-mono text-sm text-indigo-600"></span></h3>
+                    </div>
+                    <!-- Messages -->
+                    <div id="admin-chat-messages" class="flex-1 p-4 overflow-y-auto space-y-4">
+                        <!-- Messages will be dynamically added here -->
+                    </div>
+                    <!-- Input -->
+                    <div class="p-4 border-t border-gray-200">
+                        <form id="admin-chat-form" class="relative">
+                            <input type="text" id="admin-chat-input" placeholder="Type your reply..." autocomplete="off" class="w-full pl-4 pr-12 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <button type="submit" class="absolute right-2 top-1/2 -translate-y-1/2 bg-indigo-600 text-white rounded-full p-2 hover:bg-indigo-700">
+                               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
     </main>
 </div>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+    // --- IMPORTANT: Use the SAME Firebase config as your user widget ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyBCBiykwJl0X3kE6xPqrJI29Oz1z4fn_Ng",
+        authDomain: "complaintsystemchat.firebaseapp.com",
+        databaseURL: "https://complaintsystemchat-default-rtdb.firebaseio.com/",
+        projectId: "complaintsystemchat",
+        storageBucket: "complaintsystemchat.appspot.com",
+        messagingSenderId: "1077457852214",
+        appId: "1:1077457852214:web:1cf8863cbaade6097c0597"
+    };
+
+    // Initialize Firebase
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const database = firebase.database();
+
+    // --- DOM Elements ---
+    const chatList = document.getElementById('chat-list');
+    const noChatsMessage = document.getElementById('no-chats-message');
+    const chatPanel = document.getElementById('chat-panel');
+    const chatPlaceholder = document.getElementById('chat-placeholder');
+    const activeChat = document.getElementById('active-chat');
+    const chatHeaderId = document.getElementById('chat-with-user-id');
+    const adminChatMessages = document.getElementById('admin-chat-messages');
+    const adminChatForm = document.getElementById('admin-chat-form');
+    const adminChatInput = document.getElementById('admin-chat-input');
+
+    // --- State ---
+    let currentChatId = null;
+    let messagesRef = null;
+
+    // --- Functions ---
+
+    // Render a message in the admin panel
+    const renderAdminMessage = (sender, text) => {
+        const isAdmin = sender === 'admin';
+        const messageContainer = document.createElement('div');
+        messageContainer.className = `flex items-start gap-2.5 ${isAdmin ? 'justify-end' : ''}`;
+        
+        const messageBubble = document.createElement('div');
+        messageBubble.className = `flex flex-col w-full max-w-xs leading-1.5 p-3 border-gray-200 ${isAdmin ? 'bg-indigo-500 text-white rounded-s-xl rounded-ee-xl' : 'bg-gray-100 rounded-e-xl rounded-es-xl'}`;
+        
+        const messageText = document.createElement('p');
+        messageText.className = 'text-sm font-normal';
+        messageText.textContent = text;
+
+        messageBubble.appendChild(messageText);
+        messageContainer.appendChild(messageBubble);
+        adminChatMessages.appendChild(messageContainer);
+        adminChatMessages.scrollTop = adminChatMessages.scrollHeight;
+    };
+
+    // Select a chat to view
+    const selectChat = (userId) => {
+        currentChatId = userId;
+
+        // Update UI
+        chatPlaceholder.classList.add('hidden');
+        activeChat.classList.remove('hidden');
+        activeChat.classList.add('flex');
+        chatHeaderId.textContent = userId;
+        adminChatMessages.innerHTML = ''; // Clear previous messages
+
+        // Mark chat as read in Firebase
+        database.ref('chats/' + userId).update({ unread: false });
+        
+        // Detach old listener
+        if (messagesRef) {
+            messagesRef.off();
+        }
+
+        // Listen for messages in the selected chat
+        messagesRef = database.ref('chats/' + userId + '/messages');
+        messagesRef.on('child_added', (snapshot) => {
+            const message = snapshot.val();
+            renderAdminMessage(message.sender, message.text);
+        });
+
+        // Highlight active chat in the list
+        document.querySelectorAll('#chat-list > div').forEach(div => {
+            if (div.dataset.userId === userId) {
+                div.classList.add('bg-indigo-50');
+            } else {
+                div.classList.remove('bg-indigo-50');
+            }
+        });
+    };
+
+    // Listen for chats being added or changed
+    const chatsRef = database.ref('chats').orderByChild('timestamp');
+    chatsRef.on('child_added', (snapshot) => {
+        noChatsMessage.style.display = 'none';
+        const chatData = snapshot.val();
+        const userId = snapshot.key;
+
+        const chatItem = document.createElement('div');
+        chatItem.className = 'p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition';
+        chatItem.dataset.userId = userId;
+        chatItem.innerHTML = `
+            <div class="flex justify-between items-center">
+                <p class="font-semibold text-sm truncate">${userId}</p>
+                ${chatData.unread ? '<span class="w-3 h-3 bg-green-500 rounded-full"></span>' : ''}
+            </div>
+            <p class="text-xs text-gray-500 truncate mt-1">${chatData.lastMessage || 'No messages yet'}</p>
+        `;
+        
+        chatList.prepend(chatItem); // Add new chats to the top
+        chatItem.addEventListener('click', () => selectChat(userId));
+    });
+
+    chatsRef.on('child_changed', (snapshot) => {
+        const chatData = snapshot.val();
+        const userId = snapshot.key;
+        const existingItem = document.querySelector(`[data-user-id="${userId}"]`);
+        if (existingItem) {
+            existingItem.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <p class="font-semibold text-sm truncate">${userId}</p>
+                    ${chatData.unread ? '<span class="w-3 h-3 bg-green-500 rounded-full"></span>' : ''}
+                </div>
+                <p class="text-xs text-gray-500 truncate mt-1">${chatData.lastMessage || 'No messages yet'}</p>
+            `;
+            chatList.prepend(existingItem); // Move updated chat to top
+        }
+    });
+
+    // Handle sending a reply
+    adminChatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const messageText = adminChatInput.value.trim();
+        if (messageText && currentChatId) {
+            const newMessage = {
+                sender: 'admin',
+                text: messageText,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+            // Push the new message to the messages sub-collection
+            database.ref('chats/' + currentChatId + '/messages').push(newMessage);
+            
+            // Update the lastMessage for the list preview
+            database.ref('chats/' + currentChatId).update({
+                lastMessage: messageText,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+
+            adminChatInput.value = '';
+        }
+    });
+
+</script>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
